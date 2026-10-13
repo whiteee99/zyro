@@ -76,6 +76,13 @@ Ollama is started when ZYRO opens and stopped again when it closes
 (set KILL_OLLAMA_ON_EXIT = False at the top of main.py to keep it
 running for other programs).
 
+WHERE THE AI MODELS LIVE
+------------------------
+They were moved to D:\ollama-models to free space on C: (C: had only
+8 GB free). Windows now has the setting OLLAMA_MODELS pointing there;
+you do not need to do anything. If you ever install Ollama again or
+run "ollama pull", the new models go to D: as well.
+
 THE LOOK
 --------
 The window uses a warm, low-contrast dark theme (Gruvbox) chosen to be

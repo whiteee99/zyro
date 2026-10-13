@@ -73,6 +73,7 @@ def start_ollama(timeout=15, grace=20):
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             close_fds=True,
+            env=_daemon_env(),
         )
     except (OSError, ValueError):
         return False
@@ -89,6 +90,31 @@ def start_ollama(timeout=15, grace=20):
             return False          # nothing is starting: stop waiting
         time.sleep(POLL_SECONDS)
     return is_ollama_running()
+
+
+def _daemon_env():
+    """The environment a daemon we start should inherit.
+
+    OLLAMA_MODELS matters: when the owner keeps the models on another
+    drive (D:, to save space on C:), a daemon started WITHOUT that
+    setting looks in the default C: folder, finds nothing, and reports
+    no models at all -- which looks like "Ollama is broken". ZYRO may
+    itself have been launched from a context that lacks the variable
+    (a shortcut made before the change, a script, a service), so it is
+    read from the owner's environment settings and passed on.
+    """
+    env = os.environ.copy()
+    if env.get("OLLAMA_MODELS"):
+        return env
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
+            value, _ = winreg.QueryValueEx(key, "OLLAMA_MODELS")
+        if isinstance(value, str) and value.strip():
+            env["OLLAMA_MODELS"] = value.strip()
+    except (OSError, ImportError, ValueError):
+        pass
+    return env
 
 
 def daemon_process_running():
