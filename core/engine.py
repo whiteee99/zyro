@@ -325,13 +325,33 @@ class Engine:
                                     + self.messages[
                                         -(MAX_CONTEXT_MESSAGES - 1):])
             # VISION: if the newest message carries an image, ask a
-            # vision model (when one is installed) for this reply.
+            # vision model (when one is installed) for this reply --
+            # but with a MINIMAL prompt: tiny vision models go mute
+            # when handed the full system prompt and history.
             model_to_use = self.model
+            vision_call = False
             if self.messages[-1].get("images"):
                 seen_by = advisor.vision_model()
                 if seen_by:
                     model_to_use = seen_by
-            response = chat(model=model_to_use, messages=self.messages)
+                    vision_call = True
+            if vision_call:
+                vision_messages = [{
+                    "role": "user",
+                    "content": ("Describe this screenshot in 1-2 short "
+                                "sentences. Read any important text "
+                                "you see."),
+                    "images": self.messages[-1]["images"]}]
+                response = chat(model=model_to_use,
+                                messages=vision_messages)
+            else:
+                response = chat(model=model_to_use,
+                                messages=self.messages)
+            if self.messages[-1].get("images"):
+                # History stays text-only after the vision round (and
+                # remains JSON-saveable).
+                self.messages[-1] = {**self.messages[-1],
+                                     "images": ["<image was attached>"]}
             reply = response.message.content
 
             # Qwen3 drafts its reasoning in a think block before the
