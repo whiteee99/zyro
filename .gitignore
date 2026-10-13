@@ -23,3 +23,14 @@ dist/
 # Logs & local shortcuts
 *.log
 *.lnk
+
+# Backups made before edits (main.py.bak, gui.py.bak, ...)
+*.bak
+
+# CODE mode: build output and test scratch folders
+ZYRO-code-agent.zip
+agent/_selftest/
+agent/_dbg/
+agent/_guismoke/
+agent/_guitest/
+agent/_shot/

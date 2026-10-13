@@ -54,15 +54,26 @@ WHAT IT CAN DO (just ask in normal words)
   system info, run Windows commands (dangerous ones always ask)
 - Skills: it knows recipes like file-organizer, gaming-session,
   video-music, daily-briefing -- ask "use the daily-briefing skill"
+- CODE MODE: click "CODE" (top-right) and pick a project folder and
+  ZYRO works on your code like a coding assistant: it reads the real
+  files, shows a DIFF of every change before it happens, runs
+  commands and tests, and can UNDO the last change. Four modes:
+  PLAN (read only), ASK (everything waits for your yes), EDIT (file
+  changes apply, commands ask) and AUTO. Deleting files, emptying
+  the Recycle Bin, killing a process, shutting down and downloading
+  video ALWAYS ask, in every mode.
 
 TIPS
 ----
 - The AUTO button toggles whether normal skills ask permission.
 - Installing/deleting/shutdown-type actions ALWAYS ask first.
+- The X button really quits: it saves, stops Ollama and closes, so
+  nothing is left in RAM. Use the tray menu to only HIDE the window.
 - If ZYRO answers nothing: check that Ollama is running.
 - Errors are logged to zyro_error.log in this folder.
 
 REQUIREMENTS: Windows 10/11 64-bit, 8 GB RAM recommended,
 Ollama + the qwen3:1.7b model (free), internet for downloads.
+For CODE mode qwen3:4b is a better brain: ollama pull qwen3:4b
 
 ==========================================================

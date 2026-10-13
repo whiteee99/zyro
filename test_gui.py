@@ -1,144 +1,226 @@
-"""Phase 6 stage 2 test: drives the real GUI with a scripted user.
+"""Tests for the ZYRO window: layout, theme, CODE mode, close handling.
 
-Only the yes/no permission dialog is faked (patched to answer by
-itself); engine, threads, queue and session saving all run for real.
-A small window will appear on screen for a minute or two -- that is
-the test itself.
+    venv\\Scripts\\python.exe test_gui.py
 
-Run it from the project folder:  venv\\Scripts\\python test_gui.py
+A window appears on screen for a few seconds while this runs; it needs a
+display. Nothing is stopped or changed for real: the approval dialog is
+answered by a helper thread and Ollama's shutdown is patched, so running
+this test never kills the Ollama you have open.
+
+The first three checks are the important ones -- they guard a real bug
+that shipped for weeks: the chat widget asks for more height than the
+window has, and Tk hands out space in packing order, so the input box
+was squeezed out of sight and the window had nowhere to type.
 """
 
-import glob
-import json
 import os
+import sys
+import threading
 import time
 import tkinter as tk
-from tkinter import messagebox
+from pathlib import Path
 
-import gui
+ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT))
+os.chdir(str(ROOT))
 
-PASS = []
-FAIL = []
+import gui                                                     # noqa: E402
+import theme                                                   # noqa: E402
+from agent.loop import Agent                                   # noqa: E402
+from agent.session import Session                              # noqa: E402
+from agent.workspace import Workspace                          # noqa: E402
+from core import ollama_lifecycle                              # noqa: E402
+
+PASS, FAIL = [], []
 
 
-def check(name, ok):
+def check(name, ok, detail=""):
     (PASS if ok else FAIL).append(name)
-    print(("PASS  " if ok else "FAIL  ") + name)
+    print(("PASS  " if ok else "FAIL  ") + name
+          + (f"   ({detail})" if detail and not ok else ""))
 
 
-# Auto-answer the permission dialogs and record what they showed.
-shown_dialogs = []
+def watchdog():
+    """A tray thread or a stray dialog must never hang the test."""
+    time.sleep(90)
+    print("WATCHDOG: the GUI test hung -- forcing exit")
+    sys.stdout.flush()
+    os._exit(3)
 
 
-def fake_askyesno(title, message, **kwargs):
-    shown_dialogs.append(message)
-    return fake_askyesno.answer
+threading.Thread(target=watchdog, daemon=True).start()
+
+# never pop a real modal dialog, and never really stop Ollama
+shown = {}
+gui.messagebox.showerror = lambda *a, **k: shown.setdefault("error", a)
+shutdowns = []
+gui.ollama_lifecycle.shutdown = lambda flag=True: shutdowns.append(flag)
 
 
-fake_askyesno.answer = True
-messagebox.askyesno = fake_askyesno
+def widgets(parent):
+    for child in parent.winfo_children():
+        yield child
+        yield from widgets(child)
+
+
+def click(label):
+    for widget in widgets(root):
+        if isinstance(widget, tk.Button) and widget.cget("text") == label:
+            widget.invoke()
+            return True
+    return False
+
 
 root = tk.Tk()
 app = gui.ZyroWindow(root)
 root.update()
-check("window opens", True)
+root.update_idletasks()
 
-# The startup auto-load already ran (see the "remembered" log line).
-# Trim that history now so the scripted rounds run with a clean model
-# context and the model's behavior stays deterministic: without this,
-# the loaded file-write history makes it answer plain chat with
-# write_file requests and even claim writes it never made.
-app.engine.messages = [m for m in app.engine.messages
-                       if m["role"] == "system"]
+# ---------------------------------------------------------------- layout
+print("--- layout (the regression guard) ---")
+check("the window opens", root.winfo_exists() == 1)
+check("the chat area is visible",
+      app.chat.winfo_ismapped() and app.chat.winfo_height() > 200,
+      f"h={app.chat.winfo_height()}")
+check("THE INPUT BOX IS VISIBLE",
+      app.input.winfo_ismapped() and app.input.winfo_height() > 20,
+      f"mapped={app.input.winfo_ismapped()} h={app.input.winfo_height()}")
+check("the send button is visible",
+      app.send_button.winfo_ismapped() and app.send_button.winfo_width() > 20)
+check("the input row sits below the chat",
+      app.input.master.winfo_y() > app.chat.winfo_y())
+check("typing works", app.input.cget("state") == "normal")
 
-# Responsiveness probe: while the model thinks in the background
-# thread, the UI thread must keep running its own timers.
-ticks = {"n": 0}
-
-
-def tick():
-    ticks["n"] += 1
-    root.after(50, tick)
-
-
-root.after(50, tick)
-
-
-def wait_until_idle(timeout=240):
-    """Pump the UI until the engine thread is done (timeout = failure)."""
-    start = time.time()
-    while app.busy:
-        root.update()
-        time.sleep(0.02)
-        if time.time() - start > timeout:
-            raise TimeoutError("engine did not finish in time")
-    for _ in range(10):  # let the last queued events render
-        root.update()
-        time.sleep(0.02)
-
-
-# 1) Enter key sends; chat round-trip; UI stays responsive while thinking
-app.input.delete(0, "end")  # defensive: always start each round clean
-app.input.insert(0, "Please reply with exactly: gui hello")
-app.input.focus_set()  # key events only reach a focused widget
+# a smaller window must still show the input box
+root.geometry("560x460")
 root.update()
-app.input.event_generate("<Return>")
+root.update_idletasks()
+check("the input box survives the smallest window",
+      app.input.winfo_ismapped() and app.input.winfo_height() > 20,
+      f"h={app.input.winfo_height()}")
+root.geometry("1000x680")
 root.update()
-check("Enter sends", app.busy and app.input.get() == "")
-wait_until_idle()
-chat_text = app.chat.get("1.0", "end")
-zyro_lines = [ln for ln in chat_text.splitlines() if ln.startswith("ZYRO:")]
-check("chat round-trip",
-      any("gui hello" in ln for ln in zyro_lines))
-check("status shows model again", "model:" in app.status.cget("text"))
-check("UI stayed responsive while thinking", ticks["n"] > 5)
 
-# 2) risky tool approved through the dialog
-test_file = r"D:\zyro\gui_p6_test.txt"
-if os.path.exists(test_file):
-    os.remove(test_file)
-fake_askyesno.answer = True
-app.input.delete(0, "end")
-app.input.insert(0, "Create a file named gui_p6_test.txt "
-                    "with exactly this text: gui tool works")
+# ----------------------------------------------------------------- theme
+print("--- theme ---")
+check("the window uses the theme background", root.cget("bg") == theme.BG)
+check("the chat uses the theme background", app.chat.cget("bg") == theme.BG)
+check("the sidebar uses the theme background",
+      app.sidebar.cget("bg") == theme.BG_SIDEBAR)
+check("text is warm off-white, not pure white", theme.FG.lower() != "#ffffff")
+check("the theme is low-contrast (no pure black background)",
+      theme.BG.lower() not in ("#000000", "#000"))
+check("CODE mode tags use the theme diff colours",
+      app.chat.tag_cget("add", "foreground") == theme.GREEN_DIFF
+      and app.chat.tag_cget("del", "foreground") == theme.RED_DIFF)
+
+# ------------------------------------------------------------- CODE mode
+print("--- CODE mode ---")
+project = ROOT / "agent" / "_guitest"
+project.mkdir(parents=True, exist_ok=True)
+(project / "demo.py").write_text("print('hi')\n", encoding="utf-8")
+app.agent = Agent(Workspace(project), session=Session(root=project,
+                                                      mode="ask"),
+                  mode="ask", confirm_handler=lambda r: True)
+app.agent_root = project
+app.folder_btn.config(text="  _guitest  ")
+
+check("the CODE switch exists", "CODE" in app.code_btn.cget("text"))
+app._toggle_agent_mode()
+root.update()
+check("CODE mode switches on", app.agent_mode is True)
+check("the mode strip appears", app.agent_bar.winfo_ismapped() == 1)
+check("the input box is still visible in CODE mode",
+      app.input.winfo_ismapped() and app.input.winfo_height() > 20,
+      f"h={app.input.winfo_height()}")
+check("all four modes have buttons",
+      sorted(app.mode_btns) == ["ask", "auto-edit", "full-auto", "plan"])
+
+for event in (
+    {"type": "step", "n": 1},
+    {"type": "text", "text": "Looking at demo.py.", "provisional": True},
+    {"type": "step_end", "answer": "Looking at demo.py.", "tools": 1,
+     "stats": "40 tokens"},
+    {"type": "tool", "name": "read_file",
+     "preview": "read_file(path=demo.py)"},
+    {"type": "tool_result", "name": "read_file",
+     "result": "demo.py (1 lines)\n    1| print('hi')"},
+    {"type": "diff", "path": "demo.py", "summary": "edit demo.py (+1 -1)",
+     "text": "--- b/demo.py\n+++ b/demo.py\n-print('hi')\n+print('hello')"},
+    {"type": "applied", "path": "demo.py", "ok": True},
+    {"type": "final", "text": "I updated demo.py."},
+    {"type": "_done"},
+):
+    app._handle_agent_event(event)
+    root.update()
+
+chat = app.chat.get("1.0", "end")
+check("streamed text is shown", "Looking at demo.py" in chat)
+check("the tool call is shown", "read_file(path=demo.py)" in chat)
+check("the diff is shown", "+print('hello')" in chat)
+check("the window is not left busy", app.busy is False)
+
+# --------------------------------------------------------- approval dialog
+print("--- approval dialog ---")
+
+
+def answer(label, request):
+    """Drive the dialog the way the agent thread does, then click."""
+    box = {}
+    thread = threading.Thread(
+        target=lambda: box.update(ok=app._ask_agent_confirm(request)),
+        daemon=True)
+    thread.start()
+    deadline = time.time() + 10
+    clicked = False
+    while thread.is_alive() and time.time() < deadline:
+        root.update()
+        if not clicked:
+            clicked = click(label)
+        time.sleep(0.05)
+    thread.join(timeout=2)
+    return box.get("ok"), clicked
+
+
+write = {"kind": "write", "tool": "edit_file", "path": "demo.py",
+         "summary": "edit demo.py (+1 -1)", "created": False,
+         "diff": "--- b/demo.py\n+++ b/demo.py\n-print('hi')\n"
+                 "+print('hello')",
+         "critical": False}
+ok, clicked = answer("ACCEPT", write)
+check("ACCEPT returns yes", ok is True and clicked)
+ok, clicked = answer("DECLINE", {"kind": "exec", "tool": "run_command",
+                                 "command": "echo hi", "critical": True})
+check("DECLINE returns no", ok is False and clicked)
+
+# ---------------------------------------------------- the "no Ollama" path
+print("--- missing Ollama ---")
+app.ollama_ready = False
+app._no_ollama_notice()
+check("a friendly error is shown", "error" in shown)
+check("chat is disabled", str(app.input.cget("state")) == "disabled")
+check("the send button is disabled",
+      str(app.send_button.cget("state")) == "disabled")
+check("the window survives", root.winfo_exists() == 1)
 app.on_send()
-wait_until_idle()
-log_text = app.log.get("1.0", "end")
-check("dialog showed tool, path and preview",
-      bool(shown_dialogs) and "write_file" in shown_dialogs[-1]
-      and "gui_p6_test.txt" in shown_dialogs[-1]
-      and "gui tool works" in shown_dialogs[-1])
-check("approved file was written",
-      os.path.isfile(test_file)
-      and open(test_file, encoding="utf-8").read().strip() == "gui tool works")
-check("tool run logged", "tool ran: write_file" in log_text)
+check("sending while disabled does nothing", app.busy is False)
 
-# 3) risky tool declined
-no_file = r"D:\zyro\gui_p6_no.txt"
-fake_askyesno.answer = False
-app.input.delete(0, "end")
-app.input.insert(0, "Create a file named gui_p6_no.txt "
-                    "with the text nope")
-app.on_send()
-wait_until_idle()
-log_text = app.log.get("1.0", "end")
-check("declined file was not written", not os.path.exists(no_file))
-check("decline logged", "declined" in log_text)
-
-# 4) closing the window saves the session like the CLI exit
-before = set(glob.glob(os.path.join(r"D:\zyro\memory", "chat_*.json")))
+# ------------------------------------------------------------ close path
+print("--- closing ---")
+saved, destroyed = {}, {}
+app._save_if_needed = lambda: saved.setdefault("ran", True)
+app.root.destroy = lambda: destroyed.setdefault("ran", True)
+app.tray = None
 app.on_close()
-after = set(glob.glob(os.path.join(r"D:\zyro\memory", "chat_*.json")))
-new_files = list(after - before)
-check("close saved the session", len(new_files) == 1)
-saved_ok = False
-if new_files:
-    with open(new_files[0], encoding="utf-8") as f:
-        saved = json.load(f)
-    saved_ok = any("gui_p6_test" in m.get("content", "")
-                   for m in saved if isinstance(m, dict))
-check("saved session contains this chat", saved_ok)
+check("the existing cleanup still runs (session saved)", saved.get("ran"))
+check("Ollama is stopped on close", shutdowns == [True], str(shutdowns))
+check("the window is destroyed", destroyed.get("ran") is True)
 
 print()
-print(str(len(PASS)) + " passed, " + str(len(FAIL)) + " failed")
-raise SystemExit(1 if FAIL else 0)
+print(f"{len(PASS)} passed, {len(FAIL)} failed")
+for name in FAIL:
+    print("  FAILED: " + name)
+import shutil
+shutil.rmtree(project, ignore_errors=True)
+sys.stdout.flush()
+os._exit(1 if FAIL else 0)

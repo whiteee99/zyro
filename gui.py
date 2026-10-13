@@ -6,40 +6,34 @@ Same engine underneath as always; the hotkey helper finds this
 window by its EXACT title "◆ SYSTEM ◆" -- do not change it.
 """
 
+import atexit
 import os
 import queue
 import threading
 import time
 import tkinter as tk
-from tkinter import scrolledtext
+from tkinter import messagebox, scrolledtext
 
 from core.engine import Engine, MODEL
-from core import paths, skills
+from core import ollama_lifecycle, paths, skills
+from gui_agent import AgentPane
 
-# ---------- palette ----------
-BG        = "#0b0f1a"   # app background
-BG_SIDEBAR = "#070b14"  # sidebar
-BG_DEEP   = "#0d1524"   # header / input strips
-PANEL     = "#101a2c"   # cards / hover
-BORDER    = "#1b2b45"
-CYAN      = "#4dd0e1"
-YOU_CLR   = "#9cc0ff"
-FG        = "#d7e4f2"
-DIM       = "#5d7392"
-WARN      = "#ffb74d"
-RED       = "#ff5252"
-BUBBLE_U  = "#14273d"   # user bubble
-BUBBLE_AI = "#0f1a2a"   # ZYRO bubble
-BTN_BG    = "#122438"
-BTN_ACT   = "#17506b"
+# The lifecycle switch lives next to the CLI entry point (main.py), so
+# there is exactly one place to change it.
+try:
+    from main import KILL_OLLAMA_ON_EXIT
+except Exception:                    # noqa: BLE001 - never block the window
+    KILL_OLLAMA_ON_EXIT = True
 
-FONT_CHAT = ("Segoe UI", 12)
-FONT_NAME = ("Segoe UI", 10, "bold")
-FONT_TIME = ("Segoe UI", 9)
-FONT_UI   = ("Segoe UI", 11)
-FONT_SIDE = ("Segoe UI", 10)
-FONT_BRAND = ("Segoe UI", 16, "bold")
-FONT_HEAD = ("Segoe UI", 12, "bold")
+# ---------- palette & fonts ----------
+# One source of truth (theme.py): a warm, low-contrast dark theme that
+# is easier on the eyes than the old blue/cyan one.
+from theme import (BG, BG_DEEP, BG_SIDEBAR, BORDER, BTN_ACT, BTN_BG,  # noqa: E402
+                   BUBBLE_AI, BUBBLE_U, CYAN, DIM, FG, FONT_BRAND,
+                   FONT_CHAT, FONT_HEAD, FONT_MONO, FONT_NAME, FONT_SIDE,
+                   FONT_TIME, FONT_UI, GREEN_DIFF, PANEL, RED,
+                   RED_DIFF, WARN, YOU_CLR, BTN_TEXT, DANGER_ACT,
+                   DANGER_BG)
 
 # Quick actions in the sidebar: (label, text put into the input).
 QUICK_TOOLS = [
@@ -50,7 +44,7 @@ QUICK_TOOLS = [
 ]
 
 
-class ZyroWindow:
+class ZyroWindow(AgentPane):
     def __init__(self, root):
         self.root = root
         root.title("◆ SYSTEM ◆")   # EXACT: the hotkey finds this title
@@ -61,6 +55,9 @@ class ZyroWindow:
             root.iconbitmap(str(paths.ICON_FILE))
         except tk.TclError:
             pass
+
+        # ---- agent state first: the widgets below read it while building ----
+        self._init_agent_state()
 
         # ---- main split: sidebar | chat ----
         body = tk.Frame(root, bg=BG)
@@ -74,9 +71,21 @@ class ZyroWindow:
         self._confirm_done = None
         self.auto_mode = True
 
+        # ---- Ollama lifecycle: up before the first request, down on exit ----
+        self.ollama_ready = ollama_lifecycle.start_ollama()
+        if KILL_OLLAMA_ON_EXIT:
+            # Backstop for every way this process can end (tray Exit, a
+            # crash, the console version being closed).
+            atexit.register(ollama_lifecycle.shutdown, True)
+
         self.engine = Engine(confirm_handler=self._ask_confirm)
         self._update_tokens_label()
         self._setup_tray()
+
+        if not self.ollama_ready:
+            # Let the window paint first, then say what is wrong. ZYRO
+            # stays open (tools and settings still work); chat is off.
+            self.root.after(300, self._no_ollama_notice)
 
         self._bubble("ai", "You have acquired the qualifications to "
                      "be a Player.\nThe System is bound to you now. "
@@ -187,13 +196,21 @@ class ZyroWindow:
                                font=FONT_UI, padx=18, pady=10)
         self.status.pack(side="right")
 
+        # CODE switch: turns the same window into the coding agent.
+        self.code_btn = tk.Label(head, text="  ⌨ CODE OFF  ", bg=PANEL,
+                                 fg=DIM, font=FONT_UI, padx=8, pady=4,
+                                 cursor="hand2")
+        self.code_btn.pack(side="right", padx=8)
+        self.code_btn.bind("<Button-1>", lambda e: self._toggle_agent_mode())
+
         self.chat = scrolledtext.ScrolledText(
             col, state="disabled", bg=BG, fg=FG, font=FONT_CHAT,
             insertbackground=CYAN, relief="flat", padx=14, pady=12,
             wrap="word", highlightthickness=1,
             highlightbackground=BORDER, highlightcolor=BORDER,
             spacing1=4, spacing3=4)
-        self.chat.pack(fill="both", expand=True, padx=10, pady=(10, 6))
+        # NOTE: the chat is packed at the END of this method, on purpose --
+        # see the comment there.
 
         # bubble styles (blocks with side insets read as bubbles)
         self.chat.tag_configure("u", background=BUBBLE_U,
@@ -215,6 +232,19 @@ class ZyroWindow:
                                 font=FONT_TIME, justify="center")
         self.chat.tag_configure("bad", foreground=RED,
                                 font=FONT_TIME, justify="center")
+        # coding-agent tags
+        self.chat.tag_configure("stream", background=BUBBLE_AI,
+                                foreground=FG, justify="left",
+                                lmargin1=18, lmargin2=18, rmargin=120)
+        self.chat.tag_configure("tool", foreground=DIM, font=FONT_MONO,
+                                justify="left", lmargin1=30, lmargin2=30,
+                                rmargin=40)
+        self.chat.tag_configure("add", foreground=GREEN_DIFF, font=FONT_MONO,
+                                justify="left", lmargin1=30, lmargin2=30,
+                                rmargin=40)
+        self.chat.tag_configure("del", foreground=RED_DIFF, font=FONT_MONO,
+                                justify="left", lmargin1=30, lmargin2=30,
+                                rmargin=40)
 
         row = tk.Frame(col, bg=BG_DEEP)
         row.pack(fill="x", padx=10, pady=(0, 10))
@@ -229,9 +259,23 @@ class ZyroWindow:
         self.send_button = tk.Button(
             row, text="➤", command=self.on_send, bg=BTN_BG, fg=CYAN,
             font=("Segoe UI", 14), relief="flat", width=4,
-            activebackground=BTN_ACT, activeforeground="#ffffff",
+            activebackground=BTN_ACT, activeforeground=BTN_TEXT,
             cursor="hand2")
         self.send_button.pack(side="left", padx=(0, 12), pady=10)
+
+        # PACK ORDER MATTERS. A ScrolledText asks for ~724px of height,
+        # which is taller than the window; Tk hands out space in packing
+        # order, so an input row packed AFTER the chat was squeezed out
+        # of sight completely -- a chat window with nowhere to type.
+        # Reserve the bottom strip first, then let the chat fill what is
+        # left (it shrinks happily; the row cannot).
+        row.pack(side="bottom", fill="x", padx=10, pady=(0, 10))
+        self.chat.pack(side="top", fill="both", expand=True,
+                       padx=10, pady=(10, 6))
+
+        # the coding-agent strip (folder, modes, undo) -- hidden until
+        # CODE mode is switched on
+        self._build_agent_bar(col)
 
     # ================= rendering helpers (UI thread) =================
 
@@ -306,13 +350,39 @@ class ZyroWindow:
 
     # ================= engine plumbing =================
 
+    def _no_ollama_notice(self):
+        """Ollama never came up: explain it, disable chat, do not crash."""
+        self.status.config(text="Ollama not running", fg=RED)
+        self._sys_line("Ollama not found - install it or check PATH", "bad")
+        self._sys_line("Download: https://ollama.com/download  then run: "
+                       "ollama pull " + MODEL, "bad")
+        self.input.config(state="disabled")
+        self.send_button.config(state="disabled")
+        self.agent_hint.config(text="start Ollama to use CODE mode")
+        try:
+            messagebox.showerror(
+                "ZYRO - Ollama not found",
+                "ZYRO could not start Ollama.\n\n"
+                "Install it from https://ollama.com/download, or check "
+                "that the 'ollama' command is on your PATH.\n\n"
+                "ZYRO stays open, but chatting is disabled until Ollama "
+                "is available.")
+        except tk.TclError:
+            pass
+
     def on_send(self):
         if self.busy:
+            return
+        if not getattr(self, "ollama_ready", True):
+            self._sys_line("chat is disabled: Ollama is not running", "bad")
             return
         text = self.input.get().strip()
         if not text:
             return
         self.input.delete(0, "end")
+        if self.agent_mode:
+            self._send_to_agent(text)
+            return
         self._bubble("u", text,
                      with_names=bool(text) and len(text) < 40)
         self._set_busy(True)
@@ -402,8 +472,8 @@ class ZyroWindow:
                       padx=18, pady=5, cursor="hand2").pack(side="left",
                                                             padx=6)
             tk.Button(btns, text="DECLINE", command=decline,
-                      bg="#2a0d0d", fg=RED, font=FONT_UI, relief="flat",
-                      activebackground="#3a1212", activeforeground=RED,
+                      bg=DANGER_BG, fg=RED, font=FONT_UI, relief="flat",
+                      activebackground=DANGER_ACT, activeforeground=RED,
                       padx=18, pady=5, cursor="hand2").pack(side="left",
                                                             padx=6)
             dlg.protocol("WM_DELETE_WINDOW", decline)
@@ -464,6 +534,8 @@ class ZyroWindow:
             self._update_tokens_label()
         elif kind == "error":
             self._bubble("ai", "(error -- " + str(event["text"]) + ")")
+        elif kind == "_agent":
+            self._handle_agent_event(event["event"])
         elif kind == "_done":
             self._set_busy(False)
             self._update_tokens_label()
@@ -520,6 +592,8 @@ class ZyroWindow:
             self._save_if_needed()
         except Exception:
             pass
+        # Ollama goes down with ZYRO unless the owner turned the flag off.
+        ollama_lifecycle.shutdown(KILL_OLLAMA_ON_EXIT)
         if getattr(self, "tray", None):
             try:
                 self.tray.stop()
@@ -528,15 +602,27 @@ class ZyroWindow:
         self.root.destroy()
 
     def on_close(self):
-        """The window X hides ZYRO to the tray (sessions save on
-        hide); real exit is the tray menu's Exit."""
+        """The window X: keep the existing cleanup, then really quit.
+
+        It used to hide ZYRO to the tray. It now saves the session, stops
+        Ollama and closes the window, so nothing Ollama-related is left
+        in RAM -- tick "Show / Hide ZYRO" in the tray menu if you only
+        want to hide the window.
+        """
         if self._confirm_done is not None:
             self._confirm_done.set()
         try:
-            self._save_if_needed()
+            self._save_if_needed()          # existing cleanup, unchanged
         except Exception:
             pass
-        self.root.withdraw()
+        # Ollama goes down with ZYRO unless the owner turned the flag off.
+        ollama_lifecycle.shutdown(KILL_OLLAMA_ON_EXIT)
+        if getattr(self, "tray", None):     # existing cleanup, unchanged
+            try:
+                self.tray.stop()
+            except Exception:
+                pass
+        self.root.destroy()
 
 
 def main():

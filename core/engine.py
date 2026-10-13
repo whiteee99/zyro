@@ -335,15 +335,27 @@ class Engine:
                 if seen_by:
                     model_to_use = seen_by
                     vision_call = True
+                else:
+                    # Safety net: never hand an image to a text model.
+                    self.messages[-1] = {**self.messages[-1],
+                                         "images": None}
+                    del self.messages[-1]["images"]
             if vision_call:
                 vision_messages = [{
                     "role": "user",
-                    "content": ("Describe this screenshot in 1-2 short "
-                                "sentences. Read any important text "
-                                "you see."),
+                    "content": ("What do you see in this image? Answer "
+                                "in 1-2 short sentences, reading any "
+                                "important text you see."),
                     "images": self.messages[-1]["images"]}]
                 response = chat(model=model_to_use,
                                 messages=vision_messages)
+                if not (response.message.content or "").strip():
+                    # moondream sometimes goes mute on a phrasing;
+                    # one retry with different words usually wakes it.
+                    vision_messages[0]["content"] = (
+                        "What is shown in this picture?")
+                    response = chat(model=model_to_use,
+                                    messages=vision_messages)
             else:
                 response = chat(model=model_to_use,
                                 messages=self.messages)
@@ -416,9 +428,9 @@ class Engine:
                                 "Use this to answer the user's last message "
                                 "in normal words.")
                     # VISION: look_screen / look_image hand their image
-                    # to the next model call (see the loop head). The
-                    # ollama client wants image BYTES -- a path string
-                    # would be read as base64 garbage.
+                    # to the next model call -- but ONLY when a vision
+                    # model is actually installed; a text model that
+                    # receives an image makes Ollama return a 400.
                     if request["tool"] in ("look_screen", "look_image"):
                         img = (sysops.LAST_CAPTURE
                                if request["tool"] == "look_screen"
@@ -430,10 +442,16 @@ class Engine:
                                     img_data = f.read()
                             except OSError:
                                 pass
-                        if img_data:
+                        if img_data and advisor.vision_model():
                             feedback = {"role": "user",
                                         "content": feedback,
                                         "images": [img_data]}
+                        elif img_data:
+                            feedback += ("\n[The screenshot was taken, "
+                                         "but no vision model is "
+                                         "installed, so I cannot see "
+                                         "it. Tell the user to run: "
+                                         "ollama pull moondream]")
                 else:
                     feedback = ("[User declined] The human did not allow "
                                 f"that {request['tool']}, so nothing was "

@@ -26,9 +26,9 @@ Rebuild the exe after code changes: double-click build_exe.bat.
 
 THE WINDOW
 ----------
-- Click the X to hide ZYRO to the system tray (it keeps running);
-  double-click the tray diamond to show it again, right-click ->
-  Exit to really quit. Ctrl+Alt+Z still works while hidden.
+- The X button now SAVES, STOPS OLLAMA and really quits (nothing is
+  left in RAM). To only hide the window, use the tray menu ->
+  "Show / Hide ZYRO".
 - Small window? Click the menu button (top-left) to hide the
   sidebar and get the whole width for chat.
 - Left sidebar: "New chat", your SKILLS (one click to use one) and
@@ -38,9 +38,50 @@ THE WINDOW
 - AUTO ON  = normal skills run without asking you.
 - AUTO OFF = every skill asks first (ACCEPT / DECLINE dialog).
 - Dangerous skills (installing software, deleting, shutdown,
-  registry...) ALWAYS ask, even with AUTO ON.
+  registry...) ALWAYS ask, even with AUTO ON. So do the CODE-mode
+  ones: deleting files, emptying the Recycle Bin, killing a process,
+  shutting down and downloading video.
 - The sidebar bottom shows the AUTO switch and your lifetime
   TOKEN budget (5,000,000). ZYRO warns you at 80% and 95%.
+
+
+CODE MODE -- ZYRO AS A CODING AGENT  (new)
+------------------------------------------
+Click "CODE" in the top-right corner. Pick a project folder; the first
+time, ZYRO asks whether to trust it (only trust folders you own).
+
+Then just ask: "read app.py and add a docstring to main()", or
+"run the tests and fix what fails". ZYRO reads the real files, shows
+you a DIFF of every change before it happens, and can UNDO the last
+change with the UNDO button.
+
+  PLAN  = read only; it investigates and proposes a plan
+  ASK   = every change and command waits for your yes  (default)
+  EDIT  = file changes apply (you still see the diff), commands ask
+  AUTO  = everything runs; the dangerous actions above still ask
+
+It can also work in a terminal:
+
+  cd /d D:\zyro
+  venv\Scripts\python.exe -m agent.cli --root D:\your\project
+
+  venv\Scripts\python.exe -m agent.cli --check        is Ollama ready?
+  venv\Scripts\python.exe -m agent.cli --list         trusted folders
+  venv\Scripts\python.exe -m agent.cli --resume last  continue a session
+
+Everything the agent does stays inside the folder you trusted. Read
+agent\README.md for the full list of its 74 tools and its settings.
+
+Ollama is started when ZYRO opens and stopped again when it closes
+(set KILL_OLLAMA_ON_EXIT = False at the top of main.py to keep it
+running for other programs).
+
+THE LOOK
+--------
+The window uses a warm, low-contrast dark theme (Gruvbox) chosen to be
+easy on the eyes: warm off-white text instead of pure white, a charcoal
+background instead of blue, and muted status colours. To change it,
+edit theme.py -- that one file holds every colour in the app.
 
 
 WHAT ZYRO CAN DO - just ask in normal words

@@ -128,6 +128,56 @@ def fill(label, value):
         return f"ERROR: could not fill \"{label}\" ({e})."
 
 
+def scroll(direction="down"):
+    """Scroll the open page up or down by one screen."""
+    if _state["page"] is None:
+        return "ERROR: no page is open -- use browser_open first."
+    step = 700 if str(direction).lower() != "up" else -700
+    try:
+        _state["page"].mouse.wheel(0, step)
+        _state["page"].wait_for_timeout(400)
+        return "OK, scrolled.\n" + _describe_page()
+    except Exception as e:
+        return f"ERROR: could not scroll ({e})."
+
+
+def go_back():
+    """Go back to the previous page."""
+    if _state["page"] is None:
+        return "ERROR: no page is open -- use browser_open first."
+    try:
+        _state["page"].go_back(timeout=15000)
+        return "OK, went back.\n" + _describe_page()
+    except Exception as e:
+        return f"ERROR: could not go back ({e})."
+
+
+def press_key(key="Enter"):
+    """Press one key in the page (Enter, Escape, Tab, PageDown...)."""
+    if _state["page"] is None:
+        return "ERROR: no page is open -- use browser_open first."
+    try:
+        _state["page"].keyboard.press(str(key))
+        _state["page"].wait_for_timeout(400)
+        return f"OK, pressed {key}.\n" + _describe_page()
+    except Exception as e:
+        return f"ERROR: could not press {key} ({e})."
+
+
+def get_text(selector="body"):
+    """Read the visible text of the page, or of one CSS selector."""
+    if _state["page"] is None:
+        return "ERROR: no page is open -- use browser_open first."
+    try:
+        text = _state["page"].inner_text(selector, timeout=10000)
+        text = " ".join(text.split())
+        if len(text) > MAX_STATE_CHARS * 2:
+            text = text[:MAX_STATE_CHARS * 2] + " ...[page continues]"
+        return text or "(that element has no text)"
+    except Exception as e:
+        return f"ERROR: could not read the text ({e})."
+
+
 def close_browser():
     """Shut the browser down completely."""
     try:

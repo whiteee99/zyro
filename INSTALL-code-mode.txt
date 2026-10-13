@@ -1,0 +1,72 @@
+ZYRO CODE MODE - how to install this update
+============================================
+
+WHAT THIS IS
+------------
+A new part of ZYRO that works like ZCode: it opens a project folder,
+reads and edits the files in it, runs commands, checks its own work,
+and shows you a diff before every change. It runs on your free local
+Ollama model - no API key, no subscription, no internet.
+
+HOW TO INSTALL (one minute)
+---------------------------
+1. Unzip this file INTO your ZYRO folder - the folder that contains
+   gui.py, main.py, core\ and venv\ (on your PC that is D:\zyro).
+
+2. When Windows asks "There are already files with the same name",
+   choose "Replace the files in the destination".
+   Only gui.py and two files inside core\ are updates; everything else
+   in the zip is new.
+
+   Keep the folder structure: agent\ and agent\tools\ must stay
+   folders, not flat files.
+
+3. That is all. Nothing to pip install.
+
+HOW TO START IT
+---------------
+Window:
+   Open ZYRO as usual. Click "CODE" in the top-right corner.
+   Click the folder button and choose a project folder.
+   The first time, ZYRO asks whether to trust that folder - only trust
+   folders you own.
+
+Terminal:
+   cd /d D:\zyro
+   venv\Scripts\python.exe -m agent.cli --root D:\your\project
+
+   Other useful commands:
+     venv\Scripts\python.exe -m agent.cli --check
+     venv\Scripts\python.exe -m agent.cli --list
+     venv\Scripts\python.exe -m agent.cli --resume last
+
+THE FOUR MODES (buttons in the window, --mode in the terminal)
+--------------------------------------------------------------
+   PLAN   read only: it looks around and proposes a plan
+   ASK    every change and command waits for your yes  (default)
+   EDIT   file changes are applied, you still see the diff; commands ask
+   AUTO   everything runs; only the critical actions below still ask
+
+These ALWAYS ask first, in every mode: deleting a file or folder,
+emptying the Recycle Bin, killing a process, shutdown/restart/sleep,
+and downloading a video.
+
+YOUR SAFETY NETS
+----------------
+   * It can only touch files inside the folder you trusted.
+   * Every change is shown as a diff before it lands.
+   * UNDO puts the previous file back (:undo in the terminal).
+   * Deletes go to the Windows Recycle Bin, so they are recoverable.
+
+CHECK IT WORKS
+--------------
+   cd /d D:\zyro
+   venv\Scripts\python.exe test_agent.py
+
+You should see "85 passed, 0 failed". Add --live to also run one real
+request against your local model.
+
+READ MORE
+---------
+agent\README.md - the full guide: every tool, every setting, and the
+honest limits of a 4B model on a 4 GB GPU.

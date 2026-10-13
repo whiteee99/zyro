@@ -211,28 +211,69 @@ def _contained_in(folder, filename):
     return target
 
 
+def _server_filename(header):
+    """Pull a file name out of a Content-Disposition header, or None."""
+    if not header or not isinstance(header, str):
+        return None
+    match = re.search(r"filename\*\s*=\s*([^;]+)", header, re.IGNORECASE)
+    if match:
+        value = match.group(1).strip().strip('"')
+        if "''" in value:            # RFC 5987: charset''encoded-name
+            value = value.split("''", 1)[1]
+        try:
+            value = unquote(value, encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+        if value:
+            return value
+    match = re.search(r'filename\s*=\s*"([^"]+)"', header, re.IGNORECASE) \
+        or re.search(r"filename\s*=\s*([^;]+)", header, re.IGNORECASE)
+    if match:
+        return match.group(1).strip().strip('"') or None
+    return None
+
+
 def download_file(url, name=None):
     """Download one file from a public http/https link into
     D:\\zyro\\downloads. Streams in chunks with a hard size cap."""
+    return download_to(url, DOWNLOAD_DIR, name)
+
+
+def download_to(url, folder, name=None, use_server_name=True):
+    """Download one public file into `folder`.
+
+    The order of preference for the file name is: the caller's 'name',
+    then the name the SERVER sends in Content-Disposition, then the
+    last part of the URL. Whatever is chosen, the final path is forced
+    to sit directly inside `folder`.
+    """
     ok, value = check_url(url)
     if not ok:
         return value
     url = value
-    target = _contained_in(DOWNLOAD_DIR, _pick_name(url, name))
-    if target is None:
-        return "ERROR: that file name is not safe, so nothing was saved."
+    folder = Path(folder)
     try:
-        DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        folder.mkdir(parents=True, exist_ok=True)
     except OSError as e:
-        return f"ERROR: could not create the downloads folder ({e})."
+        return f"ERROR: could not create the folder ({e})."
+    target = None
+    done = 0
     try:
         req = urllib.request.Request(
             url, headers={"User-Agent": "ZYRO-local-assistant"})
         with _OPENER.open(req, timeout=30) as resp:
+            chosen = name
+            if not (isinstance(chosen, str) and chosen.strip()) \
+                    and use_server_name:
+                chosen = _server_filename(
+                    resp.headers.get("Content-Disposition"))
+            target = _contained_in(folder, _pick_name(url, chosen))
+            if target is None:
+                return ("ERROR: that file name is not safe, so nothing "
+                        "was saved.")
             size = resp.headers.get("Content-Length")
             if size and size.isdigit() and int(size) > MAX_DOWNLOAD_BYTES:
-                return ("ERROR: that file is too big (the limit is 4 GB).")
-            done = 0
+                return "ERROR: that file is too big (the limit is 4 GB)."
             with open(target, "wb") as f:
                 while True:
                     chunk = resp.read(65536)
@@ -246,14 +287,16 @@ def download_file(url, name=None):
                         return ("ERROR: the download passed 4 GB and was "
                                 "stopped; the partial file was deleted.")
     except SSRFBlocked as e:
-        target.unlink(missing_ok=True)
+        if target is not None:
+            target.unlink(missing_ok=True)
         return f"ERROR: {e}; nothing was saved."
     except (urllib.error.URLError, OSError) as e:
-        target.unlink(missing_ok=True)
+        if target is not None:
+            target.unlink(missing_ok=True)
         return f"ERROR: the download failed ({e}); partial file removed."
     mb = done / (1024 * 1024)
     size_text = f"{mb:.1f} MB" if mb >= 1 else f"{done} bytes"
-    return f"OK: saved {target.name} ({size_text}) in D:\\zyro\\downloads."
+    return f"OK: saved {target.name} ({size_text}) in {folder}."
 
 
 def download_video(url, kind="video"):

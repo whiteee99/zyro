@@ -5,9 +5,19 @@ All conversation logic now lives in core/engine.py and speaks in
 The CLI always asks y/N for risky tools (it has no AUTO switch).
 """
 
+import atexit
 import os
 
+from core import ollama_lifecycle
 from core.engine import Engine, MODEL
+
+# OLLAMA LIFECYCLE ----------------------------------------------------------
+# Ollama is two processes (the "ollama.exe" daemon and the "ollama app.exe"
+# tray icon). ZYRO starts the daemon when it needs a brain and stops both
+# again when it exits, so a 7.8 GB laptop is never left carrying them after
+# the window is closed. Set this to False to leave Ollama running for other
+# programs once ZYRO is gone.
+KILL_OLLAMA_ON_EXIT = True
 
 
 def ask_permission(request):
@@ -43,6 +53,20 @@ def save_and_bye(engine, extra_newline=False):
 
 
 def main():
+    # ZYRO is useless without a brain, so bring Ollama up BEFORE the first
+    # request. If that fails we say so plainly instead of crashing later
+    # with a connection error.
+    if not ollama_lifecycle.start_ollama():
+        print("Ollama not found - install it or check PATH.")
+        print("  1. Download: https://ollama.com/download")
+        print("  2. Then run: ollama pull " + MODEL)
+        print("ZYRO cannot chat without Ollama, so it is stopping here.")
+        return 1
+
+    # Anything that ends this process -- normal exit, Ctrl+C, a crash --
+    # takes Ollama with it (when the flag above allows).
+    atexit.register(ollama_lifecycle.shutdown, KILL_OLLAMA_ON_EXIT)
+
     engine = Engine(confirm_handler=ask_permission)
 
     print("ZYRO is ready (model:", MODEL + "). Type 'exit' to quit.")
@@ -90,4 +114,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
