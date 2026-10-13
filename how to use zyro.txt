@@ -1,0 +1,144 @@
+==========================================================
+  HOW TO USE ZYRO  -  your personal AI (everything on D:)
+==========================================================
+
+WHAT ZYRO IS
+------------
+ZYRO is your personal AI assistant running fully on this laptop
+(offline model: qwen3). You talk, it thinks, and it can act on the
+PC for you. Everything it saves or downloads stays inside D:\zyro.
+
+
+WAYS TO OPEN ZYRO
+-----------------
+1. Ctrl+Alt+Z            the hotkey - works from anywhere,
+                         opens ZYRO or focuses it if already open
+2. Desktop icon          double-click "ZYRO" (the cyan diamond)
+3. Start Menu            type "zyro" in the search
+4. D:\zyro\ZYRO.exe      the standalone app file - copy it to the
+                         desktop or anywhere if you delete the icon
+5. D:\zyro\ZYRO.bat      debug mode (shows a console window)
+
+Repair all icons at any time: right-click install_desktop.ps1
+-> "Run with PowerShell".
+Rebuild the exe after code changes: double-click build_exe.bat.
+
+
+THE WINDOW
+----------
+- Click the X to hide ZYRO to the system tray (it keeps running);
+  double-click the tray diamond to show it again, right-click ->
+  Exit to really quit. Ctrl+Alt+Z still works while hidden.
+- Small window? Click the menu button (top-left) to hide the
+  sidebar and get the whole width for chat.
+- Left sidebar: "New chat", your SKILLS (one click to use one) and
+  QUICK TOOLS that prefill the input.
+- Main area: chat bubbles -- yours on the right, ZYRO's on the
+  left. Tool activity appears as small centered lines.
+- AUTO ON  = normal skills run without asking you.
+- AUTO OFF = every skill asks first (ACCEPT / DECLINE dialog).
+- Dangerous skills (installing software, deleting, shutdown,
+  registry...) ALWAYS ask, even with AUTO ON.
+- The sidebar bottom shows the AUTO switch and your lifetime
+  TOKEN budget (5,000,000). ZYRO warns you at 80% and 95%.
+
+
+WHAT ZYRO CAN DO - just ask in normal words
+-------------------------------------------
+
+FILES
+- List, read, write and append files (inside D:\zyro)
+- Open any file in D:\zyro with its default program
+  (games, videos, installers you downloaded...)
+- Search the whole D: drive for files by name
+
+DOWNLOADS  (saved into D:\zyro\downloads)
+- Download any file from a public link
+- Download YouTube (and similar) videos as MP4, or just the
+  audio as MP3  ->  D:\zyro\downloads\videos
+- Search the Windows software catalogue (winget) and install
+  programs  ->  always asks you first
+
+PC CONTROL
+- Volume: "set volume to 30", "mute"
+- Media keys: play/pause, next, previous, stop (works for
+  Spotify, YouTube, any player)
+- Open apps: calculator, notepad, paint, explorer, task manager
+- Open websites: youtube, google, wikipedia, github, gmail
+- Windows: "move notepad left/right", "maximize chrome",
+  "close notepad"
+- Screenshots -> saved in D:\zyro\captures
+- Clipboard: read it or put text on it
+- Wallpaper: set any image on D: as your desktop background
+- Windows Game Mode on/off
+- System info: CPU, RAM, disks, battery
+- List running programs
+- Run Windows commands, agent-style ("run dir D:\zyro") -
+  dangerous commands always ask first
+
+DEV & BROWSER
+- Find text INSIDE files anywhere on this drive
+  ("find which files mention budget")
+- Edit a file by find-and-replace ("change 'old' to 'new' in notes.txt")
+- Run short Python snippets and self-correct
+- VISION: "look at my screen and tell me what's wrong" --
+  ZYRO takes a screenshot and actually SEES it (moondream model)
+- BROWSER: "open github.com in your browser and click Sign in" --
+  a real visible Chromium that ZYRO drives step by step
+  (click, type, read the page)
+- MODEL: "which AI model is best for my PC?" -> ZYRO suggests and
+  can switch (e.g. to qwen3:4b) on the spot
+- "update yt-dlp" refreshes the video downloader in one command
+
+INFO & WEB
+- Time and date
+- Read the text of an allowed website ("what is on this link:")
+- Explore inside GitHub repositories (list any folder's files)
+
+
+EXAMPLES TO TRY
+---------------
+"What time is it?"
+"Take a screenshot"
+"Set volume to 20 and play some music" (then use media keys)
+"What's my battery and disk space?"
+"Search winget for VLC"  then  "Install VLC"
+"Download this video as mp3: <paste a youtube link>"
+"Download this file: <paste any file link>"
+"Find files named setup on D:"
+"What's inside github.com/ollama/ollama"
+"Write a file called ideas.txt with: buy milk"
+"Read notes.txt to me"
+
+
+RULES ZYRO FOLLOWS (for safety)
+-------------------------------
+- File tools only touch things inside D:\zyro
+  (search and wallpaper can see all of D:)
+- Downloads only come from public websites - never from
+  localhost or private networks
+- Installing, deleting, formatting, shutdown, registry:
+  ALWAYS requires your approval, no matter what
+- One command at a time; a hard cap stops runaway loops
+
+
+FOLDERS IN D:\zyro
+------------------
+downloads\         files ZYRO downloads
+downloads\videos\  videos and music
+captures\          screenshots
+memory\            chat history + token counter
+tools\ffmpeg\      video converter (used automatically)
+
+
+IF SOMETHING GOES WRONG
+-----------------------
+- ZYRO answers nothing / connection error:
+  start the "Ollama" app first, then retry.
+- ZYRO crashed silently: open D:\zyro\zyro_error.log
+- Want to see live errors: launch ZYRO.bat instead
+- Icons disappeared: run install_desktop.ps1
+- Health check: open a terminal in D:\zyro and run
+  venv\Scripts\python test_phase9.py   (37 checks should pass)
+
+==========================================================

@@ -1,0 +1,25 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Heavy runtime dependencies (re-downloaded by setup, ~1.1GB)
+tools/
+
+# Personal runtime data
+memory/
+captures/
+downloads/
+.mimosa/
+.v2c/
+
+# Build artifacts (too large / regenerable via build_exe.bat & make_installer.bat)
+ZYRO.exe
+ZYRO-setup.zip
+build/
+dist/
+
+# Logs & local shortcuts
+*.log
+*.lnk
