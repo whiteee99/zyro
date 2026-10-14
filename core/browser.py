@@ -17,11 +17,17 @@ MAX_STATE_CHARS = 2200
 
 # Set BEFORE playwright imports: keep the browser binaries inside the
 # install folder (never C:).
+import atexit
 import os
 os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH",
                       str(paths.PROJECT_ROOT / "tools" / "pw-browsers"))
 
-_state = {"browser": None, "page": None}
+# "pw" is the Playwright driver. It is deliberately kept alive between
+# browser sessions: stopping it and starting it again in the same
+# process does not work (the sync API cannot be restarted), which made
+# every browser_open after a browser_close fail with "Target page,
+# context or browser has been closed".
+_state = {"browser": None, "page": None, "pw": None}
 
 
 def _describe_page():
@@ -60,12 +66,31 @@ def _ensure_page(timeout=45000):
             return _state["page"]
         except Exception:
             _state["page"] = None
-    if _state["browser"] is None:
+    # Start the driver once and keep it: it cannot be restarted later.
+    if _state["pw"] is None:
         _state["pw"] = sync_playwright().start()
+    if _state["browser"] is None or not _browser_alive():
         _state["browser"] = _state["pw"].chromium.launch(headless=False)
     context = _state["browser"].new_context(locale="en-US")
     _state["page"] = context.new_page()
     return _state["page"]
+
+
+def _browser_alive():
+    """True when the current browser object still works.
+
+    A browser that was closed (or crashed) leaves a dead handle behind;
+    asking it for a new context raises "Target page, context or browser
+    has been closed", which is how every second browser_open used to
+    fail.
+    """
+    browser = _state["browser"]
+    if browser is None:
+        return False
+    try:
+        return bool(browser.is_connected())
+    except Exception:                              # noqa: BLE001
+        return False
 
 
 def open_url(url):
@@ -179,16 +204,33 @@ def get_text(selector="body"):
 
 
 def close_browser():
-    """Shut the browser down completely."""
+    """Close the browser window (the driver stays ready for next time).
+
+    Stopping the Playwright driver here looked tidy but broke the next
+    browser_open: the sync API cannot be started a second time in the
+    same process, so every later attempt died with "Target page,
+    context or browser has been closed". The driver is stopped once,
+    when ZYRO exits (see stop_driver below).
+    """
     try:
         if _state["browser"] is not None:
             _state["browser"].close()
-            _state["browser"] = None
-        if _state["pw"] is not None:
-            _state["pw"].stop()
-            _state["pw"] = None
-        _state["page"] = None
-        return "OK: browser closed."
     except Exception as e:
-        _state.update({"browser": None, "page": None, "pw": None})
+        _state.update({"browser": None, "page": None})
         return f"OK: browser closed (with a warning: {e})."
+    _state["browser"] = None
+    _state["page"] = None
+    return "OK: browser closed."
+
+
+def stop_driver():
+    """Stop the Playwright driver. Called once, when ZYRO exits."""
+    try:
+        if _state.get("pw") is not None:
+            _state["pw"].stop()
+    except Exception:                              # noqa: BLE001
+        pass
+    _state.update({"pw": None, "browser": None, "page": None})
+
+
+atexit.register(stop_driver)

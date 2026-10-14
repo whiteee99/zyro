@@ -34,20 +34,23 @@ def check(name, ok, detail=""):
 
 def ollama_processes():
     """The names of every running ollama* process (like tasklist)."""
-    try:
-        result = subprocess.run(
-            ["tasklist", "/fi", "imagename eq ollama*", "/fo", "csv", "/nh"],
-            capture_output=True, text=True, errors="replace", timeout=30)
-    except Exception as exc:                      # noqa: BLE001
-        return [f"tasklist failed: {exc}"]
     names = []
-    for line in (result.stdout or "").splitlines():
-        line = line.strip()
-        if not line or "no tasks" in line.lower():
-            continue
-        first = line.split('","')[0].strip('"').strip()
-        if first and first.lower().startswith("ollama"):
-            names.append(first)
+    for image in ("ollama*", "llama-server.exe"):
+        try:
+            result = subprocess.run(
+                ["tasklist", "/fi", f"imagename eq {image}", "/fo", "csv",
+                 "/nh"],
+                capture_output=True, text=True, errors="replace", timeout=30)
+        except Exception as exc:                  # noqa: BLE001
+            return [f"tasklist failed: {exc}"]
+        for line in (result.stdout or "").splitlines():
+            line = line.strip()
+            if not line or "no tasks" in line.lower():
+                continue
+            first = line.split('","')[0].strip('"').strip()
+            if first and (first.lower().startswith("ollama")
+                          or first.lower().startswith("llama-server")):
+                names.append(first)
     return names
 
 

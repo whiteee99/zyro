@@ -7,6 +7,7 @@ The CLI always asks y/N for risky tools (it has no AUTO switch).
 
 import atexit
 import os
+import sys
 
 from core import ollama_lifecycle
 from core.engine import Engine, MODEL
@@ -53,6 +54,14 @@ def save_and_bye(engine, extra_newline=False):
 
 
 def main():
+    # A Windows console is usually cp1252, and tool output is not always
+    # plain text (a YouTube title with an emoji would crash the print).
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError, OSError):
+            pass
+
     # ZYRO is useless without a brain, so bring Ollama up BEFORE the first
     # request. If that fails we say so plainly instead of crashing later
     # with a connection error.

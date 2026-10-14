@@ -385,7 +385,23 @@ def check_ready():
     return 0
 
 
+def _utf8_console():
+    """Make printing survive a non-UTF-8 console.
+
+    A Windows console is usually cp1252 and tool output is not always
+    plain text: a YouTube title with an emoji in it crashed the whole
+    CLI with UnicodeEncodeError. Replacing the odd character is far
+    better than losing the session.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError, OSError):
+            pass
+
+
 def main(argv=None):
+    _utf8_console()
     args = build_parser().parse_args(argv)
     config.ensure_state_dirs()
 

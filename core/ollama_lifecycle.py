@@ -30,7 +30,12 @@ PROBE_TIMEOUT = 1.0
 POLL_SECONDS = 0.5
 
 # Kill the tray app FIRST: while it lives it can restart the daemon.
-KILL_ORDER = ("ollama app.exe", "ollama.exe")
+# llama-server.exe is the model runner. It is a CHILD of the daemon, so
+# killing the daemon does not always take it with it -- and a leftover
+# runner keeps holding the GPU (measured: eight orphans held 2.9 GB of a
+# 4 GB card, after which every new model failed with "CUDA error: out of
+# memory"). ZYRO clears them too, so nothing Ollama-related survives it.
+KILL_ORDER = ("ollama app.exe", "ollama.exe", "llama-server.exe")
 
 # Windows installs Ollama per user, so PATH may be missing it when ZYRO
 # is started from a shortcut or the tray.
