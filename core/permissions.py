@@ -53,6 +53,34 @@ RISKY_TOOLS = {"write_file", "append_file", "set_volume", "mute_toggle",
                "browser_close", "update_ytdlp"}
 ALLOWED_TOOLS = SAFE_TOOLS | RISKY_TOOLS
 
+# AUTO MODE NEVER COVERS THESE, whatever the model says.
+#
+# They are the tools that can run code, launch a downloaded program, or
+# pull a file off the internet -- the short chain that turns a poisoned
+# web page or a downloaded file into code running as the user:
+#
+#     download_file  ->  open_file     (fetch and launch a program)
+#     run_python                       (any code at all)
+#     run_command                      (any shell command at all)
+#
+# "how to use zyro.txt" has always promised that dangerous actions ask
+# first "no matter what". These four had been slipping through AUTO.
+ALWAYS_ASK = {"run_python", "run_command", "open_file", "download_file"}
+
+
+def auto_allows(request, auto_on):
+    """Would AUTO mode approve this request without asking the human?
+
+    AUTO still covers the everyday things -- volume, media keys, apps,
+    screenshots, the browser, file writes inside the install folder --
+    but never the four above, and never anything flagged critical.
+    """
+    if not auto_on:
+        return False
+    if request.get("critical"):
+        return False
+    return request.get("tool") not in ALWAYS_ASK
+
 # Which tools need a "path" argument (list_files treats a missing path
 # as "the main folder"; the rest refuse).
 TOOLS_WITH_PATH = {"list_files", "read_file", "write_file", "append_file"}

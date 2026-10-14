@@ -35,7 +35,9 @@ THE WINDOW
   QUICK TOOLS that prefill the input.
 - Main area: chat bubbles -- yours on the right, ZYRO's on the
   left. Tool activity appears as small centered lines.
-- AUTO ON  = normal skills run without asking you.
+- AUTO ON  = normal skills run without asking you. Four skills ask
+  even with AUTO ON: running Python, shell commands, opening a file
+  and downloading from the internet.
 - AUTO OFF = every skill asks first (ACCEPT / DECLINE dialog).
 - Dangerous skills (installing software, deleting, shutdown,
   registry...) ALWAYS ask, even with AUTO ON. So do the CODE-mode

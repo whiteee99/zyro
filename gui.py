@@ -15,7 +15,7 @@ import tkinter as tk
 from tkinter import messagebox, scrolledtext
 
 from core.engine import Engine, MODEL
-from core import ollama_lifecycle, paths, skills
+from core import ollama_lifecycle, paths, permissions, skills
 from gui_agent import AgentPane
 
 # The lifecycle switch lives next to the CLI entry point (main.py), so
@@ -331,7 +331,8 @@ class ZyroWindow(AgentPane):
             self.auto_mode = True
             self.auto_btn.config(text="●  AUTO ON", fg=CYAN)
             self._sys_line("AUTO ON — normal skills run freely "
-                           "(critical ones still ask)")
+                           "(running code/commands, opening or "
+                           "downloading files still ask)")
 
     @staticmethod
     def _fmt_tokens(n):
@@ -414,8 +415,10 @@ class ZyroWindow(AgentPane):
 
     def _ask_confirm(self, request):
         """Runs in the engine thread when a risky skill needs approval.
-        AUTO mode approves instantly -- EXCEPT critical requests."""
-        if self.auto_mode and not request.get("critical"):
+        AUTO mode approves instantly -- EXCEPT critical requests and the
+        ALWAYS_ASK tools (run_python, run_command, open_file,
+        download_file)."""
+        if permissions.auto_allows(request, self.auto_mode):
             return True
         info = Engine.confirm_event(request)
         answer = {}
@@ -515,7 +518,7 @@ class ZyroWindow(AgentPane):
             if req.get("critical"):
                 self._sys_line("⚠ critical skill: " + event["tool"],
                                "bad")
-            elif self.auto_mode:
+            elif permissions.auto_allows(req, self.auto_mode):
                 self._sys_line("⚡ " + event["tool"])
             else:
                 self._sys_line("authorization requested: "

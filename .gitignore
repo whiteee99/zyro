@@ -34,4 +34,5 @@ agent/_dbg/
 agent/_guismoke/
 agent/_guitest/
 agent/_shot/
+agent/_audit/
 ZYRO.spec
